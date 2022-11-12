@@ -1,0 +1,16 @@
+[Unit]
+Description=Plexamp
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{plexamp_user}}
+WorkingDirectory=/home/{{plexamp_user}}/plexamp
+ExecStart=/usr/bin/node /home/{{plexamp_user}}/plexamp/js/index.js
+Restart=on-failure
+LimitRTPRIO=infinity
+LimitMEMLOCK=infinity
+
+[Install]
+WantedBy=multi-user.target

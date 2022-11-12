@@ -1,0 +1,80 @@
+- name: Plexamp Version
+  shell: 
+    cmd: |
+      curl -s "https://plexamp.plex.tv/headless/{{plexamp_stream}}.json" | jq -r '.latestVersion'
+  register: plexamp_version
+
+- name: Plexamp Archive
+  stat:
+    path: "/tmp/plexamp-headless-v{{plexamp_version.stdout}}.tar.bz2"
+  register: plexamp_dl
+
+- name: Download plexamp
+  ansible.builtin.get_url:
+    url: "{{plexamp_archive}}/Plexamp-Linux-headless-v{{plexamp_version.stdout}}.tar.bz2"
+    dest: "/tmp/plexamp-headless-v{{plexamp_version.stdout}}.tar.bz2"
+  when: not plexamp_dl.stat.exists
+
+- name: Plexamp directory
+  stat:
+    path: "/home/{{plexamp_user}}/plexamp"
+  register: plexamp_dir
+
+- name: Plexamp current version
+  shell: "cat /home/{{plexamp_user}}/plexamp_version"
+  register: plexamp_cur_version
+  when: plexamp_dir.stat.exists
+
+- name: Extract plexamp package
+  ansible.builtin.unarchive:
+    remote_src: yes
+    src: "/tmp/plexamp-headless-v{{plexamp_version.stdout}}.tar.bz2"
+    dest: "/home/{{plexamp_user}}/"
+  when: not plexamp_dir.stat.exists or plexamp_cur_version != plexamp_version
+  notify: restart plexamp
+
+- name: Set plexamp version
+  copy:
+    dest: "/home/{{plexamp_user}}/plexamp_version"
+    content: "v{{plexamp_version.stdout}}"
+
+- name: Jack Installed
+  stat:
+    path: /usr/bin/jackd
+  register: jack_bin
+
+- name: Remove included jack library
+  ansible.builtin.file:
+    path: "/home/{{plexamp_user}}/plexamp/treble/{{item}}"
+    state: absent
+  with_items:
+    - "linux-arm/libjack.so.0"
+    - "linux-x64/libjack.so.0"
+    - "linux-arm64/libjack.so.0"
+    - "linux-arm/libjack.so"
+    - "linux-x64/libjack.so"
+    - "linux-arm64/libjack.so"
+  when: jack_bin.stat.exists
+
+- name: Own plexamp directory
+  ansible.builtin.file:
+    path: "/home/{{plexamp_user}}"
+    state: directory
+    recurse: yes
+    owner: "{{plexamp_user}}"
+    group: "{{plexamp_user}}"
+    
+- name: Create plexamp service
+  template:
+    src: plexamp.service.j2
+    dest: /usr/lib/systemd/system/plexamp.service
+    owner: root
+    group: root
+    mode: 0644
+  notify: daemon-reload
+
+- name: Start plexamp service
+  service:
+    name: plexamp
+    state: started
+    enabled: yes
